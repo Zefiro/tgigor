@@ -1,0 +1,16 @@
+{
+  "name": "tgigor",
+  "version": "0.0.1",
+  "description": "Igor bot for Telegram",
+  "author": "Zefiro Anthragon",
+  "main": "igor.js",
+  "scripts": {
+    "start": "node igor.js"
+  },
+  "dependencies": {
+    "moment": "^2.18.1",
+    "mysql": "^2.13.0",
+    "promise-mysql": "^3.2.1",
+    "telegraf": "^3.15.3"
+  }
+}

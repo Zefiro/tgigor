@@ -1,0 +1,11 @@
+{
+    "db_host": "localhost",
+    "db_user":  "<database user>",
+    "db_pwd": "<database password>",
+    "db_db": "<database name>",
+    "tg_botkey": "<telegram bot API key as given by @botfather>",
+    "owner": {
+        "id": "<telegram ID of the bot owner>",
+        "chatId": "<apparently the same as id?>"
+    }
+}
