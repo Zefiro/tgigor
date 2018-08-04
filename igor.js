@@ -241,7 +241,7 @@ bot.hears(/^\s*(\d{2,3}([,.]\d)?)\s*[kK][gG](\s+(.+?))?\s*$/, async (ctx, next) 
 		return
     }
 	let row = {
-		tg_id: oUser.id,
+		user_id: oUser.user_id,
 		gramm: ctx.match[1].replace(",", ".") * 1000,
 		comment: ctx.match[4] ? ctx.match[4] : "",
 	}
@@ -269,7 +269,7 @@ bot.hears(/^\s*(\d{2,3})\s+(\d{2,3})\s+(\d{2,3})(\s+(.+?))?\s*$/, async (ctx, ne
 		return
     }
 	let row = {
-		tg_id: oUser.id,
+		user_id: oUser.user_id,
 		sys: ctx.match[1],
 		dia: ctx.match[2],
 		pulse: ctx.match[3],
