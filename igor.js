@@ -21,6 +21,23 @@ const path = require('path');
 const auth = require('./auth.js')()
 const undo = require('./undo.js')
 
+process.on('SIGINT', function () {
+    console.log("Bye, Bye...")
+    process.exit(0)
+})
+
+process.on('uncaughtException', (err) => {
+    console.error("Igor committing suicide: there was an unhandled exception: " + err)
+    console.log(err.stack)
+    process.exit(1)
+})
+
+process.on('unhandledRejection', (err) => {
+    console.error("Igor committing suicide: there was an unhandled promise rejection: " + err)
+    console.error(err.stack);
+    process.exit(2)
+})
+
 // start bot with: export NODE_ENV=prod && npm start
 const NODE_ENV = process.env.NODE_ENV
 switch (NODE_ENV) {
@@ -70,51 +87,7 @@ god.executeSql = async function(sqlString, values) {
 	}
 }
 
-god.executeSql_old = function(sqlString, values) {
-    return new Promise(function(resolve, reject) {
-    god.sqlPool.getConnection(function(err, connection) {
-        if (err) {
-          console.log("Error getting SQL connection from pool: " + err)
-          reject(err)
-          return;
-        }
-        connection.query(sqlString, values, function(err, rows){
-            connection.release()
-            if(!err) {
-                resolve(rows)
-            } else {
-				console.log(util.format("Failed SQL: '%s' | Values:", sqlString, values))
-                reject(err)
-            }
-        })
-        connection.on('error', function(err) {
-              console.log("Error in SQL connection: " + err)
-              reject(err)
-              return;
-        })
-    })
-    })
-}
 
-const reminder = require('./reminder')(god)
-
-
-process.on('SIGINT', function () {
-    console.log("Bye, Bye...")
-    process.exit(0)
-})
-
-process.on('uncaughtException', (err) => {
-    console.error("Igor committing suicide: there was an unhandled exception: " + err)
-    console.log(err.stack)
-    process.exit(1)
-})
-
-process.on('unhandledRejection', (err) => {
-    console.error("Igor committing suicide: there was an unhandled promise rejection: " + err)
-    console.error(err.stack);
-    process.exit(2)
-})
 
 /* Returns a function which throws an exception with the given msg as format string and parameters given to the function. For use in catch handlers. */
 function rethrow(msg) {
@@ -194,10 +167,11 @@ console.log("'text' counter called")
 */
 
 // TODO remove example
+/*
 const sayYoMiddleware = (ctx, next) => {
 	ctx.reply('yo').then(next)
 }
-
+*/
 
 // TODO remove example
 // Text messages handling
@@ -228,9 +202,11 @@ bot.command('cat',  async (ctx) =>{
 
 // TODO remove example
 // Wow! RegEx
+/*
 bot.hears(/reverse (.+)/, (ctx) => {
   return ctx.reply(ctx.match[1].split('').reverse().join(''))
 })
+*/
 
 // weight measurements, one number followed by 'kg' and an optional comment
 bot.hears(/^\s*(\d{2,3}([,.]\d)?)\s*[kK][gG](\s+(.+?))?\s*$/, async (ctx, next) => {
@@ -275,7 +251,6 @@ bot.hears(/^\s*(\d{2,3})\s+(\d{2,3})\s+(\d{2,3})(\s+(.+?))?\s*$/, async (ctx, ne
 		pulse: ctx.match[3],
 		comment: ctx.match[5] ? ctx.match[5] : "",
 	}
-	// TODO if there is already a value for today, remove it?
     let rows = await god.executeSql("SELECT * FROM qself_mmhg WHERE DATE(TIMESTAMP) = CURDATE() LIMIT 3").catch(rethrow("reactBloodPressure: SQL failed: %s"))
     if (rows.length == 0) {
 		res = await god.executeSql("INSERT INTO qself_mmhg SET ?", [row]).catch(rethrow("reactBloodPressure: SQL failed: %s"))
@@ -292,8 +267,16 @@ bot.hears(/^\s*(\d{2,3})\s+(\d{2,3})\s+(\d{2,3})(\s+(.+?))?\s*$/, async (ctx, ne
     await next()
 })
 
-// Start polling
-bot.startPolling()
-console.log("Igor started.")
+// main program starts here
+;(async () => {
+	await require('./dbmaintenance')(god)
+	const reminder = await require('./reminder')(god)
 
-bot.telegram.sendMessage(config.owner.chatId, "Master, I'm back (" + config.igor_version + ")")
+	// Start polling
+	bot.startPolling()
+	console.log("Igor started.")
+	
+	bot.telegram.sendMessage(config.owner.chatId, "Master, I'm back (" + config.igor_version + ")")
+
+})()
+

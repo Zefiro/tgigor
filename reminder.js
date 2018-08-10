@@ -9,15 +9,15 @@ function rethrow(msg) {
 	}
 }
 
-module.exports = function() { 
+module.exports = async function() { 
 	let self = {
 
 	reminders: [],
 	executeSql: {},
 	
-	init: function(god) {
+	init: async function(god) {
 		this.executeSql = god.executeSql
-		this.loadReminders()
+		await this.loadReminders()
 	},
 	
 	loadReminders: async function() {
@@ -36,6 +36,6 @@ module.exports = function() {
 	},
 	
 	}
-    self.init.apply(self, arguments)
+    await self.init.apply(self, arguments)
     return self
 }
