@@ -270,7 +270,7 @@ bot.hears(/^\s*(\d{2,3})\s+(\d{2,3})\s+(\d{2,3})(\s+(.+?))?\s*$/, async (ctx, ne
 // main program starts here
 ;(async () => {
 	await require('./dbmaintenance')(god)
-	const reminder = await require('./reminder')(god)
+//	const reminder = await require('./reminder')(god)
 
 	// Start polling
 	bot.startPolling()

@@ -46,6 +46,14 @@ module.exports = async function() {
 				") ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin"
 			await this.sql(sqlString)
 			sqlString =
+				"ALTER TABLE `qself_mmhg` " +
+				"ADD PRIMARY KEY (`id`)"
+			await this.sql(sqlString)
+			sqlString =
+				"ALTER TABLE `qself_mmhg` " +
+				"MODIFY `id` int(11) NOT NULL AUTO_INCREMENT"
+			await this.sql(sqlString)
+			sqlString =
 				"CREATE TABLE qself_weight (" +
 				"id int(11) NOT NULL," +
 				"user_id int(11) NOT NULL COMMENT 'Igor User ID'," +
@@ -53,6 +61,14 @@ module.exports = async function() {
 				"gramm int(11) NOT NULL," +
 				"comment varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL" +
 				") ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin"
+			await this.sql(sqlString)
+			sqlString =
+				"ALTER TABLE `qself_weight` " +
+				"ADD PRIMARY KEY (`id`)"
+			await this.sql(sqlString)
+			sqlString =
+				"ALTER TABLE `qself_weight` " +
+				"MODIFY `id` int(11) NOT NULL AUTO_INCREMENT"
 			await this.sql(sqlString)
 			sqlString =
 				"CREATE TABLE users (" +
@@ -66,6 +82,15 @@ module.exports = async function() {
 			sqlString =
 				"INSERT INTO users (user_id, tg_id, tg_chat_id, username, permissions) VALUES" +
 				"(1, " + god.config.owner.id + ", " + god.config.owner.chatId + ", 'ZefiroDragon', 'dragon')"
+			await this.sql(sqlString)
+			sqlString =
+				"ALTER TABLE `users` " +
+				"ADD PRIMARY KEY (`user_id`)," +
+				"ADD UNIQUE KEY `tg_id` (`tg_id`)"
+			await this.sql(sqlString)
+			sqlString =
+				"ALTER TABLE `users` " +
+				"MODIFY `user_id` int(11) NOT NULL AUTO_INCREMENT"
 			await this.sql(sqlString)
 		}
 		
