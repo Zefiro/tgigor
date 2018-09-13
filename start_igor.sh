@@ -1,7 +1,7 @@
 #!/bin/bash
 # This starts the Telegram bot Igor in a screen for the current user
 # this script is intended to be called at bootup, e.g. from /etc/rc.local with:
-# su -c /home/zefiro/tgigor/start_tgigor.sh zefiro
+# su -c /home/zefiro/tgigor/start_igor.sh zefiro
 
 cd "$(dirname "$0")"
 

@@ -59,7 +59,7 @@ bot.use(session())
 
 var god = {
     config: config,
-    executeSql: function() { console.error("This should have been overridden") },
+    executeSql: function() { console.error("god.executeSql should have been overridden") },
     bot: bot,
     auth: auth,
 }
@@ -194,11 +194,13 @@ bot.command('answer', sayYoMiddleware, (ctx) => {
 */
 
 // TODO remove example
+/*
 bot.command('cat',  async (ctx) =>{
   return ctx.replyWithPhoto({
     url: 'http://lorempixel.com/400/200/cats/'
   })
 })
+*/
 
 // TODO remove example
 // Wow! RegEx
