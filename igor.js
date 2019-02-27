@@ -19,6 +19,7 @@ const moment = require('moment')
 const fs = require('fs');
 const path = require('path');
 const app = require('express')()
+const basicAuth = require('express-basic-auth')
 const http = require('http').Server(app)
 const dns = require('dns')
 const winston = require('winston')
@@ -55,8 +56,8 @@ switch (NODE_ENV) {
 }
 console.log("\n\n\n\n\n\n\n\n\n\n")
 console.log("Loading config " + sConfigFile)
-let configBuffer = fs.readFileSync(path.resolve(__dirname, 'config', sConfigFile), 'utf-8');
-let config = JSON.parse(configBuffer);
+let configBuffer = fs.readFileSync(path.resolve(__dirname, 'config', sConfigFile), 'utf-8')
+let config = JSON.parse(configBuffer)
 
 
 const bot = new Telegraf(config.tg_botkey)
@@ -136,6 +137,12 @@ const logger = winston.loggers.get('main')
 // Webserver test
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 app.use('/', require('express').static(__dirname + '/public'))
+
+app.use(basicAuth({
+    users: { 'igor': config.api_passwd },
+	challenge: true,
+	realm: 'Tg Igor',
+}))
 
 app.get('/cmd/:sId', async function(req, res) {
 	var ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress
@@ -438,8 +445,8 @@ async function showMainMenu(ctx) {
 	await require('./dbmaintenance')(god)
 //	const reminder = await require('./reminder')(god)
 
-	http.listen(8081, function(){
-	  logger.info('listening on *:%s', 8081)
+	http.listen(config.api_port, function(){
+	  logger.info('listening on *:%s', config.api_port)
 	})
 
 	// Start polling
