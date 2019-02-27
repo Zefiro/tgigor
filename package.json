@@ -13,9 +13,12 @@
     "start": "node igor.js"
   },
   "dependencies": {
+    "express": "*",
+    "http": "*",
     "moment": "*",
     "mysql": "*",
     "promise-mysql": "*",
-    "telegraf": "*"
+    "telegraf": "*",
+    "winston": "*"
   }
 }

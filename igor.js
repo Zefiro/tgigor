@@ -18,6 +18,10 @@ const util = require('util')
 const moment = require('moment')
 const fs = require('fs');
 const path = require('path');
+const app = require('express')()
+const http = require('http').Server(app)
+const dns = require('dns')
+const winston = require('winston')
 
 const auth = require('./auth.js')()
 const undo = require('./undo.js')
@@ -94,6 +98,69 @@ god.executeSql = async function(sqlString, values) {
 function rethrow(msg) {
 	return (cause) => { throw util.format(msg, cause) }
 }
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+// Winston test
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+function addNamedLogger(name, level = 'debug', label = name) {
+    let { format } = require('logform');
+	let getFormat = (label, colorize = false) => {
+		let nop = format((info, opts) => { return info })
+		return format.combine(
+			colorize ? format.colorize() : nop(),
+			format.timestamp({
+				format: 'YYYY-MM-DD HH:mm:ss',
+			}),
+			format.label({ label: label }),
+			format.splat(),
+			format.printf(info => `${info.timestamp} [${info.level}] [${info.label}] \t${info.message}`)
+			)
+	}
+	winston.loggers.add(name, {
+	  level: level,
+	  transports: [
+		new winston.transports.Console({
+			format: getFormat(label, true),
+		}),
+		new winston.transports.File({ 
+			format: getFormat(label, false),
+			filename: 'ledstrip.log'
+		})
+	  ]
+	})
+}
+addNamedLogger('main', 'debug')
+const logger = winston.loggers.get('main')
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+// Webserver test
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+app.use('/', require('express').static(__dirname + '/public'))
+
+app.get('/cmd/:sId', async function(req, res) {
+	var ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress
+	var sId = req.params.sId
+	try {
+		var rdns = await util.promisify(dns.reverse)(ip)
+	} catch(error) {
+		console.log("DNS error: " + error)
+		rdns = ip
+	}
+	logger.info("Command %s requested by %s (%s)", sId, ip, rdns)
+	if (sId == "home") {
+		res.send("Welcome home")
+		let msg = "Welcome home"
+		await bot.telegram.sendMessage(config.owner.chatId, msg)
+	} else {
+     	logger.error("Command not found: " + sId)
+		res.status(404).send('Command not found: ' + sId)
+	}
+})
+
+
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 /* Returns the oUser object with all known infos about a tg user. If no user is found, and createNew=true, a new DB entry is inserted. Otherwise returns null. */
 async function getUserDetails(tg_id, createNew) {
@@ -370,6 +437,10 @@ async function showMainMenu(ctx) {
 ;(async () => {
 	await require('./dbmaintenance')(god)
 //	const reminder = await require('./reminder')(god)
+
+	http.listen(8081, function(){
+	  logger.info('listening on *:%s', 8081)
+	})
 
 	// Start polling
 	bot.startPolling()
