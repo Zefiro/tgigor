@@ -8,5 +8,7 @@
     "owner": {
         "id": "<telegram ID of the bot owner>",
         "chatId": "<apparently the same as id?>"
-    }
+    },
+    "api_port": 1234,
+    "api_passwd": "<supersecretpassword>"
 }
