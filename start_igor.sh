@@ -14,4 +14,4 @@ screen -AdmS tgigor -t bot
 # -S: specify session name
 # -p: selects window by title
 # -X: sends the command into the window
-screen -S tgigor -p bot -X stuff $'export NODE_ENV=prod && npm start\n'
+screen -S tgigor -p bot -X stuff $'export NODE_ENV=dev && npm start\n'

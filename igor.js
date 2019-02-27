@@ -7,6 +7,7 @@ Using the Telegram module from http://telegraf.js.org/
 TODO
 - change db handling to https://stackoverflow.com/a/40745825/131146
   -> better error handling, currently error handlers pile onto each other
+- use Winston for logging
 
 */
 
@@ -119,21 +120,27 @@ async function notifyZefiro(ctx, msg) {
 
 // This is called for every interaction, and ensures the proper user object is loaded, as well as handling exceptions
 bot.use(async (ctx, next) => {
-	if (ctx.updateType === 'edited_message') {
-		console.log("Message updated to: " + ctx.update.edited_message.text)
-//        console.log(ctx)
-		await next()
-		return
-	}
-	if (ctx.updateType != 'message') {
-		console.log("Unknown type of update: " + ctx.updateType)
-    	console.log(ctx)
-		await next()
-		return
-	}
-    console.log("<" + ctx.from.username + "> " + ctx.message.text)
-//	console.log(ctx.message)
     const start = moment()
+	if (ctx.from.is_bot) {
+		console.log("A bot tried to interact with me -> ignored")
+		await notifyZefiro(ctx, "A bot tried to interact with me: @" + ctx.from.username + " (" + ctx.from.id + ")")
+		return
+	}
+
+	let timerMsg = ''
+	if (ctx.updateType == 'message') {
+		console.log("<" + ctx.from.username + "> " + ctx.message.text)
+		timerMsg = "<" + ctx.from.username + "> " + ctx.message.text
+	} else if (ctx.updateType == 'callback_query') {
+		console.log("[" + ctx.from.username + "] option " + ctx.update.callback_query.data)
+		timerMsg = "[" + ctx.from.username + "] option " + ctx.update.callback_query.data
+	} else if (ctx.updateType == 'edited_message') {
+		console.log("Message updated to: " + ctx.update.edited_message.text)
+	} else {
+		console.log("Unknown type of update: " + ctx.updateType)
+		return; // stop further processing
+	}
+
 	ctx.state.oUser = await getUserDetails(ctx.from.id)
 	if (!ctx.state.oUser) {
 		console.log("Auth: getUser failed for @" + ctx.from.username + " (" + ctx.from.id + ")")
@@ -150,9 +157,11 @@ bot.use(async (ctx, next) => {
 		await notifyZefiro(ctx, "Unhandled exception when chatting with @" + ctx.from.username + " (" + ctx.from.id + ") (Error ID: " + errId + "):\n" + cause)
 		// TODO do we need to rethrow? or can we just treat all exceptions as handled here?
 	}
-    const ms = moment().diff(start)
-	const fuzzyTime = (ms) => (ms < 900) ? ms + "ms" : (ms < 60000) ? Math.round(ms/100)/10 + "s" : Math.floor(ms/60000) + "m " + Math.round((ms % 60000)/1000) + "s"
-    console.log('This bot took %s to answer to: <%s> %s', fuzzyTime(ms), ctx.from.username, ctx.message.text)
+	if (timerMsg) {
+		const ms = moment().diff(start)
+		const fuzzyTime = (ms) => (ms < 900) ? ms + "ms" : (ms < 60000) ? Math.round(ms/100)/10 + "s" : Math.floor(ms/60000) + "m " + Math.round((ms % 60000)/1000) + "s"
+		console.log('This bot took %s to answer to: %s', fuzzyTime(ms), timerMsg)
+	}
 })
 
 // TODO remove example
@@ -268,6 +277,94 @@ bot.hears(/^\s*(\d{2,3})\s+(\d{2,3})\s+(\d{2,3})(\s+(.+?))?\s*$/, async (ctx, ne
 	await ctx.reply(sReply, { reply_to_message_id: ctx.message.message_id } )
     await next()
 })
+
+// ================================================================================================================================================
+// ================================================================================================================================================
+// ================================================================================================================================================
+
+bot.on('callback_query', function onCallbackQuery(callbackQuery) {
+  const action = callbackQuery.update.callback_query.data;
+  const msg = callbackQuery.update.callback_query.message;
+
+  console.log("Got action: " + action)
+  if (action === 'select_list_0') {
+	d_currentList = 0
+	let text = "Todolist: " + d_lists[d_currentList].name + "\n"
+	var markup = {
+		  reply_markup: {
+			inline_keyboard: [
+			  [{ text: 'Home Item 1', callback_data: 'list_0_1' }],
+			  [{ text: 'Home Item 2', callback_data: 'list_0_2' }]
+			]
+		  }
+		};
+    callbackQuery.editMessageText(text, markup);
+  } else if (action === 'select_list_0') {
+	let text = "This is Todo 'Home', Item 1"
+	var markup = {
+		  reply_markup: {
+			inline_keyboard: [
+			  [{ text: 'Done', callback_data: 'list_0_1_done' }],
+			  [{ text: 'Edit', callback_data: 'list_0_2_edit' }]
+			]
+		  }
+		};
+    callbackQuery.editMessageText(text, markup);
+  }
+  
+  else if (action === '1') {
+    text = 'You hit button 1';
+  const opts = {
+    chat_id: msg.chat.id,
+    message_id: msg.message_id,
+  };
+  callbackQuery.editMessageText(text, opts);
+  } else if (action === '2') {
+	let markup = {
+			inline_keyboard: [
+			  [{ text: 'Second Stage: A', callback_data: 'A' }],
+			  [{ text: 'Second Stage: B', callback_data: 'B' }],
+			]
+	}
+	callbackQuery.editMessageReplyMarkup(markup);
+  } else if (action === 'A') {
+	  console.log("got second stage A")
+  } else {	  
+	  callbackQuery.deleteMessage()
+  }
+
+});
+
+var d_lists = [{
+		name: 'Home',
+	}, {
+		name: 'Work',
+	},
+]
+var d_currentList = 0
+var d_currentMenuMessageId = 0
+
+bot.command('menu',  async (ctx) => {
+	return await showMainMenu(ctx)
+})
+
+async function showMainMenu(ctx) {
+	let text = "Igor main menu for " + ctx.state.oUser.username + "\n"
+	text += "Todolist: " + d_lists[d_currentList].name + "\n"
+	var options = {
+		  reply_markup: {
+			inline_keyboard: [
+			  [{ text: 'Home', callback_data: 'select_list_0' },
+			  { text: 'Work', callback_data: 'select_list_1' },
+			  { text: 'Show Lists', callback_data: 'show_lists' }]
+			]
+		  }
+		};
+	let reply = await ctx.reply(text, options)
+	d_currentMenuMessageId = reply.message_id
+}
+
+// ================================================================================================================================================
 
 // main program starts here
 ;(async () => {

@@ -1,10 +1,4 @@
 
-function rethrow(msg) {
-	return function(cause) {
-		throw util.format(msg, cause)
-	}
-}
-
 module.exports = function() { 
     let self = {
 
