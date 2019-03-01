@@ -9,6 +9,7 @@
         "id": "<telegram ID of the bot owner>",
         "chatId": "<apparently the same as id?>"
     },
+	"api_host": "127.0.0.1",
     "api_port": 1234,
     "api_passwd": "<supersecretpassword>"
 }

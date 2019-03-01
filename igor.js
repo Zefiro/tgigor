@@ -445,8 +445,8 @@ async function showMainMenu(ctx) {
 	await require('./dbmaintenance')(god)
 //	const reminder = await require('./reminder')(god)
 
-	http.listen(config.api_port, function(){
-	  logger.info('listening on *:%s', config.api_port)
+	http.listen(config.api_port, config.api_host, function(){
+	  logger.info('listening on %s:%s', config.api_host, config.api_port)
 	})
 
 	// Start polling
