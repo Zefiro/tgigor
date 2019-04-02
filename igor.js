@@ -125,7 +125,7 @@ function addNamedLogger(name, level = 'debug', label = name) {
 		}),
 		new winston.transports.File({ 
 			format: getFormat(label, false),
-			filename: 'ledstrip.log'
+			filename: 'tgigor.log'
 		})
 	  ]
 	})
@@ -171,7 +171,7 @@ app.get('/cmd/:sId', async function(req, res) {
 
 /* Returns the oUser object with all known infos about a tg user. If no user is found, and createNew=true, a new DB entry is inserted. Otherwise returns null. */
 async function getUserDetails(tg_id, createNew) {
-    let rows = await god.executeSql("SELECT * FROM users WHERE tg_id = " + tg_id).catch(rethrow("GetUser: SQL failed: %s"))
+    let rows = await god.executeSql("SELECT * FROM users WHERE tg_id = ?", [tg_id]).catch(rethrow("GetUser: SQL failed: %s"))
 	if (rows.length == 1) {
 		user = rows[0]
 //		console.log("GetUser: user '" + user.username + "' found")
@@ -189,7 +189,7 @@ async function getUserDetails(tg_id, createNew) {
 /* Forwards the message inside ctx to the bot owner, along with a custom 'msg' string */
 async function notifyZefiro(ctx, msg) {
     await bot.telegram.sendMessage(config.owner.chatId, msg)
-    await bot.telegram.forwardMessage(config.owner.chatId, ctx.chat.id, ctx.message.message_id)
+    await bot.telegram.forwardMessage(config.owner.chatId, ctx.chat.id, ctx.state.message_id)
 }
 
 // This is called for every interaction, and ensures the proper user object is loaded, as well as handling exceptions
@@ -203,13 +203,18 @@ bot.use(async (ctx, next) => {
 
 	let timerMsg = ''
 	if (ctx.updateType == 'message') {
+//console.log(ctx.message)
 		console.log("<" + ctx.from.username + "> " + ctx.message.text)
 		timerMsg = "<" + ctx.from.username + "> " + ctx.message.text
+		ctx.state.message_id = ctx.message.message_id
 	} else if (ctx.updateType == 'callback_query') {
 		console.log("[" + ctx.from.username + "] option " + ctx.update.callback_query.data)
 		timerMsg = "[" + ctx.from.username + "] option " + ctx.update.callback_query.data
 	} else if (ctx.updateType == 'edited_message') {
+//console.log(ctx.update)
 		console.log("Message updated to: " + ctx.update.edited_message.text)
+		// to avoid headache with every place which expects certain values inside 'message'...
+		ctx.state.message_id = ctx.update.edited_message.message_id
 	} else {
 		console.log("Unknown type of update: " + ctx.updateType)
 		return; // stop further processing
@@ -223,6 +228,9 @@ bot.use(async (ctx, next) => {
 		return
 	}
 	try {
+		if (ctx.updateType == 'edited_message') {
+			reactUpdatedMessage(ctx)
+		}
 		await next()
 	} catch(cause) {		
 		let errId = new Date().valueOf().toString(16)
@@ -237,6 +245,22 @@ bot.use(async (ctx, next) => {
 		console.log('This bot took %s to answer to: %s', fuzzyTime(ms), timerMsg)
 	}
 })
+
+// callback list for message updates (filled further down), function(ctx-from-Telegraf, content-from-db)
+let onUpdate = {}
+
+async function reactUpdatedMessage(ctx) {
+    let oUser = ctx.state.oUser
+    let rows = await god.executeSql("SELECT * FROM messages WHERE user_id = ? AND message_id = ?",  [oUser.user_id, ctx.update.edited_message.message_id]).catch(rethrow("reactUpdatedMessage: SQL failed: %s"))
+    if (rows.length == 0) {
+		console.log("Message to be updated not found")
+		await ctx.reply("I noticed you just edited this message. Unfortunately I don't know about that one, so no action is taken.", { reply_to_message_id: ctx.update.edited_message.message_id } )
+	} else {
+		// TODO check if module is known
+		// TODO could there be more than one row? if so, iterate
+		onUpdate[rows[0].module](ctx, JSON.parse(rows[0].content))
+	}
+}
 
 // TODO remove example
 /*
@@ -294,8 +318,8 @@ bot.hears(/reverse (.+)/, (ctx) => {
 */
 
 // weight measurements, one number followed by 'kg' and an optional comment
+const convg2kg = (g) => (g/1000 + " kg").replace(".", ",") // TODO better way to use German number format?
 bot.hears(/^\s*(\d{2,3}([,.]\d)?)\s*[kK][gG](\s+(.+?))?\s*$/, async (ctx, next) => {
-	const convg2kg = (g) => (g/1000 + " kg").replace(".", ",") // TODO better way to use German number format?
     let oUser = ctx.state.oUser
 	if (! await auth.checkPermission(ctx, "qself", true)) {
         next()
@@ -306,21 +330,48 @@ bot.hears(/^\s*(\d{2,3}([,.]\d)?)\s*[kK][gG](\s+(.+?))?\s*$/, async (ctx, next) 
 		gramm: ctx.match[1].replace(",", ".") * 1000,
 		comment: ctx.match[4] ? ctx.match[4] : "",
 	}
-    let rows = await god.executeSql("SELECT * FROM qself_weight WHERE DATE(TIMESTAMP) = CURDATE() LIMIT 3").catch(rethrow("reactWeight: SQL failed: %s"))
-    if (rows.length == 0) {
-		res = await god.executeSql("INSERT INTO qself_weight SET ?", [row]).catch(rethrow("reactWeight: SQL failed: %s"))
-		var sReply = "Weight: " + convg2kg(row.gramm) + (row.comment ? " (" + row.comment + ")" : "")
-		console.log("'" + sReply + "' inserted as row #" + res.insertId)
-		// TODO add undo action to delete rows.insertId
-	} else {
+    let rows = await god.executeSql("SELECT * FROM qself_weight WHERE user_id = ? AND DATE(TIMESTAMP) = CURDATE()", [oUser.user_id]).catch(rethrow("reactWeight: SQL failed: %s"))
+	res = await god.executeSql("INSERT INTO qself_weight SET ?", [row]).catch(rethrow("reactWeight: SQL failed: %s"))
+	var sReply = "Weight: " + convg2kg(row.gramm) + (row.comment ? " (" + row.comment + ")" : "")
+    if (rows.length > 0) {
+		sReply += "\n" + (rows.length+1) + ". measurement for today."
+	}
+	console.log("'" + sReply + "' inserted as row #" + res.insertId)
+	await storeMessageHistory(ctx, "qself-weight", { sqlid: res.insertId })
+if (false) {
 		res = await god.executeSql("UPDATE qself_weight SET ? WHERE id = ?", [row, rows[0].id]).catch(rethrow("reactWeight: SQL failed: %s"))
 		var sReply = "Weight: " + convg2kg(row.gramm) + (row.comment ? " (" + row.comment + ")" : "") + " -- updated from " + convg2kg(rows[0].gramm) + (rows[0].comment ? " (" + rows[0].comment + ")" : "")
 		console.log("'" + sReply + "' (updated for id " + rows[0].id + ")")
-		// TODO add undo action to update rows.id with previous values
 	}
 	await ctx.reply(sReply, { reply_to_message_id: ctx.message.message_id } )
     await next()
 })
+
+onUpdate["qself-weight"] = async function(ctx, content) {
+    let oUser = ctx.state.oUser
+    let rows = await god.executeSql("SELECT * FROM qself_weight WHERE user_id = ? AND DATE(TIMESTAMP) = CURDATE()", [oUser.user_id]).catch(rethrow("updateWeight: SQL failed: %s"))
+    if (rows.length == 0) {
+		await ctx.reply("Sorry, an internal error occured updating your measurement.", { reply_to_message_id: ctx.update.edited_message.message_id } )
+		notifyZefiro(ctx, "[qself.weight]: internal error, referenced message not found. user = " + oUser.username + " (" + oUser.user_id + "), message_id = " + ctx.update.edited_message.message_id)
+		return
+	}
+	let newText = ctx.update.edited_message.text
+	let re = /^\s*(\d{2,3}([,.]\d)?)\s*[kK][gG](\s+(.+?))?\s*$/
+	let match = re.exec(newText)
+	if (match === null) {
+		await ctx.reply("You edited a weight measurement, however the new message doesn't follow the pattern of a number followed by 'kg' (and an optional comment). No action is taken.", { reply_to_message_id: ctx.update.edited_message.message_id } )
+		return
+	}
+	let row = {
+		user_id: oUser.user_id,
+		gramm: match[1].replace(",", ".") * 1000,
+		comment: match[4] ? match[4] : "",
+	}
+	res = await god.executeSql("UPDATE qself_weight SET ? WHERE id = ?", [row, rows[0].id]).catch(rethrow("updateWeight: SQL failed: %s"))
+	var sReply = "Weight: " + convg2kg(row.gramm) + (row.comment ? " (" + row.comment + ")" : "") + " -- updated from " + convg2kg(rows[0].gramm) + (rows[0].comment ? " (" + rows[0].comment + ")" : "")
+	console.log("'" + sReply + "' (updated for id " + rows[0].id + ")")
+	await ctx.reply(sReply, { reply_to_message_id: ctx.state.message_id } )
+}
 
 // blood pressure measurement, three numbers and optional comment
 bot.hears(/^\s*(\d{2,3})\s+(\d{2,3})\s+(\d{2,3})(\s+(.+?))?\s*$/, async (ctx, next) => {
@@ -336,21 +387,56 @@ bot.hears(/^\s*(\d{2,3})\s+(\d{2,3})\s+(\d{2,3})(\s+(.+?))?\s*$/, async (ctx, ne
 		pulse: ctx.match[3],
 		comment: ctx.match[5] ? ctx.match[5] : "",
 	}
-    let rows = await god.executeSql("SELECT * FROM qself_mmhg WHERE DATE(TIMESTAMP) = CURDATE() LIMIT 3").catch(rethrow("reactBloodPressure: SQL failed: %s"))
-    if (rows.length == 0) {
-		res = await god.executeSql("INSERT INTO qself_mmhg SET ?", [row]).catch(rethrow("reactBloodPressure: SQL failed: %s"))
-		var sReply = "Blood pressure: " + row.sys + " / " + row.dia + ", Pulse: " + row.pulse + (row.comment ? " (" + row.comment + ")" : "")
-		console.log("'" + sReply + "' inserted as row #" + res.insertId)
-		// TODO add undo action to delete rows.insertId
-	} else {
-		res = await god.executeSql("UPDATE qself_mmhg SET ? WHERE id = ?", [row, rows[0].id]).catch(rethrow("reactBloodPressure: SQL failed: %s"))
-		var sReply = "Blood pressure: " + row.sys + " / " + row.dia + ", Pulse: " + row.pulse + (row.comment ? " (" + row.comment + ")" : "") + " -- updated from " + rows[0].sys + " / " + rows[0].dia + " / " + rows[0].pulse + (rows[0].comment ? " (" + rows[0].comment + ")" : "")
-		console.log("'" + sReply + "' (updated for id " + rows[0].id + ")")
-		// TODO add undo action to update rows.id with previous values
+    let rows = await god.executeSql("SELECT * FROM qself_mmhg WHERE user_id = ? AND DATE(TIMESTAMP) = CURDATE()", [oUser.user_id]).catch(rethrow("reactBloodPressure: SQL failed: %s"))
+	res = await god.executeSql("INSERT INTO qself_mmhg SET ?", [row]).catch(rethrow("reactBloodPressure: SQL failed: %s"))
+	var sReply = "Blood pressure: " + row.sys + " / " + row.dia + ", Pulse: " + row.pulse + (row.comment ? " (" + row.comment + ")" : "")
+    if (rows.length > 0) {
+		sReply += "\n" + (rows.length+1) + ". measurement for today."
 	}
+	console.log("'" + sReply + "' inserted as row #" + res.insertId)
+	await storeMessageHistory(ctx, "qself-mmhg", { sqlid: res.insertId })
+	// TODO add undo action to delete rows.insertId
 	await ctx.reply(sReply, { reply_to_message_id: ctx.message.message_id } )
     await next()
 })
+
+onUpdate["qself-mmhg"] = async function(ctx, content) {
+    let oUser = ctx.state.oUser
+    let rows = await god.executeSql("SELECT * FROM qself_mmhg WHERE user_id = ? AND id = ?", [oUser.user_id, content.sqlid]).catch(rethrow("updateBloodPressure: SQL failed: %s"))
+    if (rows.length == 0) {
+		await ctx.reply("Sorry, an internal error occured updating your measurement.", { reply_to_message_id: ctx.update.edited_message.message_id } )
+		notifyZefiro(ctx, "[qself.mmHg]: internal error, referenced message not found. user = " + oUser.username + " (" + oUser.user_id + "), message_id = " + ctx.update.edited_message.message_id)
+		return
+	}
+	let newText = ctx.update.edited_message.text
+	let re = /^\s*(\d{2,3})\s+(\d{2,3})\s+(\d{2,3})(\s+(.+?))?\s*$/
+	let match = re.exec(newText)
+	if (match === null) {
+		await ctx.reply("You edited a mmHg measurement, however the new message doesn't follow the pattern of three numbers (and an optional comment). No action is taken.", { reply_to_message_id: ctx.update.edited_message.message_id } )
+		return
+	}
+	let row = {
+		user_id: oUser.user_id,
+		sys: match[1],
+		dia: match[2],
+		pulse: match[3],
+		comment: match[5] ? match[5] : "",
+	}
+	res = await god.executeSql("UPDATE qself_mmhg SET ? WHERE id = ?", [row, rows[0].id]).catch(rethrow("updateBloodPressure: SQL failed: %s"))
+	var sReply = "Blood pressure: " + row.sys + " / " + row.dia + ", Pulse: " + row.pulse + (row.comment ? " (" + row.comment + ")" : "") + " -- updated from " + rows[0].sys + " / " + rows[0].dia + " / " + rows[0].pulse + (rows[0].comment ? " (" + rows[0].comment + ")" : "")
+	console.log("'" + sReply + "' (updated for id " + rows[0].id + ")")
+	await ctx.reply(sReply, { reply_to_message_id: ctx.state.message_id } )
+}
+
+async function storeMessageHistory(ctx, module, content) {
+	row = {
+		user_id: ctx.state.oUser.user_id,
+		message_id: ctx.message.message_id,
+		module: module,
+		content: JSON.stringify(content)
+	}
+	res = await god.executeSql("INSERT INTO messages SET ?", [row]).catch(rethrow("Store Message: SQL failed: %s"))
+}
 
 // ================================================================================================================================================
 // ================================================================================================================================================
@@ -441,7 +527,7 @@ async function showMainMenu(ctx) {
 // ================================================================================================================================================
 
 // main program starts here
-;(async () => {
+(async () => {
 	await require('./dbmaintenance')(god)
 //	const reminder = await require('./reminder')(god)
 

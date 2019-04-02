@@ -93,6 +93,20 @@ module.exports = async function() {
 				"MODIFY `user_id` int(11) NOT NULL AUTO_INCREMENT"
 			await this.sql(sqlString)
 		}
+		if (this.dbVersion == 2) {
+			console.log("dbMaintenance: upgrading database to version 3")
+			this.dbVersion = 3
+			let sqlString =
+				"CREATE TABLE messages (" +
+				"id INT NOT NULL AUTO_INCREMENT," +
+				"user_id INT NOT NULL COMMENT 'Igor User ID'," +
+				"message_id INT NOT NULL," +
+				"module VARCHAR(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL COMMENT 'Which module can react to this'," +
+				"content TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL COMMENT 'Module-specific detail info'," +
+				"PRIMARY KEY (id)" +
+				") ENGINE = MyISAM CHARSET=utf8mb4 COLLATE utf8mb4_bin"
+			await this.sql(sqlString)
+		}
 		
 		if (this.dbVersion > origVersion) {
 			await this.sql("UPDATE `metadata` SET `dbVersion` = " + this.dbVersion)
