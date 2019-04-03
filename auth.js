@@ -1,5 +1,5 @@
 
-module.exports = function() { 
+module.exports = function() {
     let self = {
 
 	init: function(god) {
@@ -11,7 +11,7 @@ module.exports = function() {
                 	console.log("Permission '" + permission + "' denied für unknown user")
                 	return false
         	}
-	        if (~user.permissions.split(/[\s,;]*/).indexOf(permission) || user.permissions == 'dragon') {
+	        if (~user.permissions.split(/[\s,;]+/).indexOf(permission) != -1 || user.permissions == 'dragon') {
         	        console.log("Permission '" + permission + "' granted for " + user.username)
 	                return true
         	} else {
