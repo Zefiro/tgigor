@@ -8,6 +8,8 @@ TODO
 - change db handling to https://stackoverflow.com/a/40745825/131146
   -> better error handling, currently error handlers pile onto each other
 - use Winston for logging
+- merge concepts of replaceReply and storeMessageHistory
+  - store history with a "deletion trigger", which can be "any next message" or "specific match" (e.g. edit of the same message Id)
 
 */
 
@@ -262,6 +264,17 @@ async function reactUpdatedMessage(ctx) {
 	}
 }
 
+var replaceReply_lastMessageIds = {}
+async function replaceReply(ctx, sReply, oOptions) {
+	let msg = await ctx.reply(sReply, oOptions)
+	let prevMsgId = replaceReply_lastMessageIds[msg.chat.id]
+	if (prevMsgId) {
+		console.log("Replacing previous message " + prevMsgId + " in chat with " + msg.chat.username)
+		await ctx.deleteMessage(prevMsgId)
+	}
+	replaceReply_lastMessageIds[msg.chat.id] = msg.message_id	
+}
+
 // TODO remove example
 /*
 bot.on('text', async (ctx, next) => {
@@ -338,28 +351,25 @@ bot.hears(/^\s*(\d{2,3}([,.]\d)?)\s*[kK][gG](\s+(.+?))?\s*$/, async (ctx, next) 
 	}
 	console.log("'" + sReply + "' inserted as row #" + res.insertId)
 	await storeMessageHistory(ctx, "qself-weight", { sqlid: res.insertId })
-if (false) {
-		res = await god.executeSql("UPDATE qself_weight SET ? WHERE id = ?", [row, rows[0].id]).catch(rethrow("reactWeight: SQL failed: %s"))
-		var sReply = "Weight: " + convg2kg(row.gramm) + (row.comment ? " (" + row.comment + ")" : "") + " -- updated from " + convg2kg(rows[0].gramm) + (rows[0].comment ? " (" + rows[0].comment + ")" : "")
-		console.log("'" + sReply + "' (updated for id " + rows[0].id + ")")
-	}
-	await ctx.reply(sReply, { reply_to_message_id: ctx.message.message_id } )
+	await replaceReply(ctx, sReply, { reply_to_message_id: ctx.message.message_id } )
     await next()
 })
 
+// Updates a measurement. Note: this currently only works on same-day edits and only takes the first measurement of the day
+// TODO: update to actually change the replied-to measurement
 onUpdate["qself-weight"] = async function(ctx, content) {
     let oUser = ctx.state.oUser
     let rows = await god.executeSql("SELECT * FROM qself_weight WHERE user_id = ? AND DATE(TIMESTAMP) = CURDATE()", [oUser.user_id]).catch(rethrow("updateWeight: SQL failed: %s"))
-    if (rows.length == 0) {
+    if (rows.length != 0) {
 		await ctx.reply("Sorry, an internal error occured updating your measurement.", { reply_to_message_id: ctx.update.edited_message.message_id } )
-		notifyZefiro(ctx, "[qself.weight]: internal error, referenced message not found. user = " + oUser.username + " (" + oUser.user_id + "), message_id = " + ctx.update.edited_message.message_id)
+		notifyZefiro(ctx, "[qself.weight]: internal error, referenced message not found or too many (count=" + rows.length + "). user = " + oUser.username + " (" + oUser.user_id + "), message_id = " + ctx.update.edited_message.message_id)
 		return
 	}
 	let newText = ctx.update.edited_message.text
 	let re = /^\s*(\d{2,3}([,.]\d)?)\s*[kK][gG](\s+(.+?))?\s*$/
 	let match = re.exec(newText)
 	if (match === null) {
-		await ctx.reply("You edited a weight measurement, however the new message doesn't follow the pattern of a number followed by 'kg' (and an optional comment). No action is taken.", { reply_to_message_id: ctx.update.edited_message.message_id } )
+		await replaceReply(ctx, "You edited a weight measurement, however the new message doesn't follow the pattern of a number followed by 'kg' (and an optional comment). No action is taken.", { reply_to_message_id: ctx.update.edited_message.message_id } )
 		return
 	}
 	let row = {
@@ -370,7 +380,7 @@ onUpdate["qself-weight"] = async function(ctx, content) {
 	res = await god.executeSql("UPDATE qself_weight SET ? WHERE id = ?", [row, rows[0].id]).catch(rethrow("updateWeight: SQL failed: %s"))
 	var sReply = "Weight: " + convg2kg(row.gramm) + (row.comment ? " (" + row.comment + ")" : "") + " -- updated from " + convg2kg(rows[0].gramm) + (rows[0].comment ? " (" + rows[0].comment + ")" : "")
 	console.log("'" + sReply + "' (updated for id " + rows[0].id + ")")
-	await ctx.reply(sReply, { reply_to_message_id: ctx.state.message_id } )
+	await replaceReply(ctx, sReply, { reply_to_message_id: ctx.state.message_id } )
 }
 
 // blood pressure measurement, three numbers and optional comment
@@ -396,16 +406,17 @@ bot.hears(/^\s*(\d{2,3})\s+(\d{2,3})\s+(\d{2,3})(\s+(.+?))?\s*$/, async (ctx, ne
 	console.log("'" + sReply + "' inserted as row #" + res.insertId)
 	await storeMessageHistory(ctx, "qself-mmhg", { sqlid: res.insertId })
 	// TODO add undo action to delete rows.insertId
-	await ctx.reply(sReply, { reply_to_message_id: ctx.message.message_id } )
+	await replaceReply(ctx, sReply, { reply_to_message_id: ctx.message.message_id } )
     await next()
 })
 
+// see comment on update-weight
 onUpdate["qself-mmhg"] = async function(ctx, content) {
     let oUser = ctx.state.oUser
     let rows = await god.executeSql("SELECT * FROM qself_mmhg WHERE user_id = ? AND id = ?", [oUser.user_id, content.sqlid]).catch(rethrow("updateBloodPressure: SQL failed: %s"))
-    if (rows.length == 0) {
+    if (rows.length != 0) {
 		await ctx.reply("Sorry, an internal error occured updating your measurement.", { reply_to_message_id: ctx.update.edited_message.message_id } )
-		notifyZefiro(ctx, "[qself.mmHg]: internal error, referenced message not found. user = " + oUser.username + " (" + oUser.user_id + "), message_id = " + ctx.update.edited_message.message_id)
+		notifyZefiro(ctx, "[qself.mmHg]: internal error, referenced message not found or too many (count=" + rows.length + "). user = " + oUser.username + " (" + oUser.user_id + "), message_id = " + ctx.update.edited_message.message_id)
 		return
 	}
 	let newText = ctx.update.edited_message.text
@@ -425,7 +436,7 @@ onUpdate["qself-mmhg"] = async function(ctx, content) {
 	res = await god.executeSql("UPDATE qself_mmhg SET ? WHERE id = ?", [row, rows[0].id]).catch(rethrow("updateBloodPressure: SQL failed: %s"))
 	var sReply = "Blood pressure: " + row.sys + " / " + row.dia + ", Pulse: " + row.pulse + (row.comment ? " (" + row.comment + ")" : "") + " -- updated from " + rows[0].sys + " / " + rows[0].dia + " / " + rows[0].pulse + (rows[0].comment ? " (" + rows[0].comment + ")" : "")
 	console.log("'" + sReply + "' (updated for id " + rows[0].id + ")")
-	await ctx.reply(sReply, { reply_to_message_id: ctx.state.message_id } )
+	await replaceReply(ctx, sReply, { reply_to_message_id: ctx.state.message_id } )
 }
 
 async function storeMessageHistory(ctx, module, content) {

@@ -65,3 +65,5 @@ typings/
 
 # not convinced this is useful in my case
 /package-lock.json
+
+/initial_importer
