@@ -270,7 +270,7 @@ async function replaceReply(ctx, sReply, oOptions) {
 	let prevMsgId = replaceReply_lastMessageIds[msg.chat.id]
 	if (prevMsgId) {
 		console.log("Replacing previous message " + prevMsgId + " in chat with " + msg.chat.username)
-		await ctx.deleteMessage(prevMsgId)
+		await ctx.deleteMessage(prevMsgId).catch(err => { console.log("Failed to delete previous message: " + err) })
 	}
 	replaceReply_lastMessageIds[msg.chat.id] = msg.message_id	
 }
