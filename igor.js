@@ -256,7 +256,7 @@ async function reactUpdatedMessage(ctx) {
     let rows = await god.executeSql("SELECT * FROM messages WHERE user_id = ? AND message_id = ?",  [oUser.user_id, ctx.update.edited_message.message_id]).catch(rethrow("reactUpdatedMessage: SQL failed: %s"))
     if (rows.length == 0) {
 		console.log("Message to be updated not found")
-		await ctx.reply("I noticed you just edited this message. Unfortunately I don't know about that one, so no action is taken.", { reply_to_message_id: ctx.update.edited_message.message_id } )
+		await replaceReply(ctx, "I noticed you just edited this message. Unfortunately I don't know about that one, so no action is taken.", { reply_to_message_id: ctx.update.edited_message.message_id } )
 	} else {
 		// TODO check if module is known
 		// TODO could there be more than one row? if so, iterate
